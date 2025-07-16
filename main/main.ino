@@ -10,7 +10,7 @@ const int RESET_PIN = 27;     // Reset GPIO pin (changed from 12 - boot-sensitiv
 
 const int lenData = 16;  // Number of bytes in Data array (128 bits total)
 
-/*MODIFY CLK_FREQ HERE*/ int clk_freq_khz = 500;
+/*MODIFY CLK_FREQ HERE*/ int clk_freq_khz = 100;
 
 // Calculate delay based on frequency (half period in microseconds)
 int clk_half_period;
@@ -47,7 +47,7 @@ void setup() {
   delay(10);  // Short delay for initialization
 
   // Send data using custom protocol
-  sendResetOnly();
+  sendSerialData();
   
 }
 

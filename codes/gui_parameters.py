@@ -1,6 +1,47 @@
 import PySimpleGUI as sg
+import serial.tools.list_ports
 sg.theme('DefaultNoMoreNagging')
 # sg.theme('TanBlue')
+
+# Function to get available COM ports
+def get_available_ports(logger=None):
+    """
+    Get available COM ports and detect Silicon Labs CP210x devices.
+    
+    Args:
+        logger: Optional logging function to use instead of print
+    
+    Returns:
+        tuple: (port_list, default_port)
+    """
+    if logger is None:
+        logger = print  # Use print as default
+    
+    ports = list(serial.tools.list_ports.comports())
+    port_list = []
+    default_port = "COM3"  # fallback
+    cp210x_found = False
+    
+    for p in ports:
+        port_list.append(p.device)
+        
+        # Check for Silicon Labs CP210x USB-to-UART bridge (common on ESP32 boards)
+        desc_str = str(p.description).lower()
+        manuf_str = str(p.manufacturer).lower() if p.manufacturer else ""
+        product_str = str(p.product).lower() if p.product else ""
+        
+        if ("silicon labs" in desc_str) or ("cp210x" in desc_str) or ("cp2102" in desc_str) or \
+           ("silicon labs" in manuf_str) or ("cp210x" in manuf_str) or ("cp2102" in manuf_str) or \
+           ("silicon labs" in product_str) or ("cp210x" in product_str) or ("cp2102" in product_str):
+            default_port = p.device
+            cp210x_found = True
+    
+    if cp210x_found:
+        logger(f"CP210x device found on {default_port}")
+    else:
+        logger(f"Using fallback port {default_port}")
+    
+    return port_list, default_port
 
 # --- Logical frames for new chip ---
 
@@ -87,6 +128,34 @@ test_network_layout = [
      sg.Combo([str(i) for i in range(16)], default_value='0', key='_TMUX_SEL_', font='Any 8', readonly=False, expand_x=True)]
 ]
 
+# Advanced Settings Panel
+def make_advanced_settings_panel():
+    port_list, default_port = get_available_ports()
+    
+    # Clock frequency options (in kHz)
+    clock_freq_options = ['50', '100', '200', '500', '1000', '2000']
+    
+    settings_layout = [
+        [sg.Text('CLOCK FREQUENCY (KHZ)', font='Any 8', expand_x=True), 
+         sg.Combo(clock_freq_options, default_value='100', key='_CLOCK_FREQ_', font='Any 8', readonly=False, expand_x=True)],
+        [sg.Text('SERIAL PORT', font='Any 8', expand_x=True), 
+         sg.Combo(port_list, default_value=default_port, key='_SERIAL_PORT_', font='Any 8', readonly=True, expand_x=True)],
+        [sg.Text('CONSOLE OUTPUT', font='Any 8', expand_x=True),
+         sg.Push(),
+         sg.Button('REFRESH', key='_REFRESH_PORTS_', font='Any 8', size=(8,1)),
+         sg.Button('CLEAR', key='_CLEAR_CONSOLE_', font='Any 8', size=(8,1))],
+        [sg.Multiline('', key='_CONSOLE_OUTPUT_', font='Courier 8', size=(45, 18), 
+                     expand_x=True, expand_y=False, disabled=True, autoscroll=True, 
+                     background_color='#1e1e1e', text_color='#d4d4d4', write_only=False,
+                     reroute_stdout=False, reroute_stderr=False, echo_stdout_stderr=False)]
+    ]
+    
+    return [
+        [sg.Frame('ADVANCED SETTINGS', settings_layout, font='Any 8', pad=(5,5), 
+                 expand_x=False, expand_y=False, element_justification='left', 
+                 key='_ADVANCED_FRAME_', visible=False)]
+    ]
+
 def make_layout():
     layout = [
         [
@@ -115,14 +184,19 @@ def make_layout():
                 # Bottom: FILTER
                 [sg.Frame('FILTER', filter_layout, font='Any 8', pad=(1,1), expand_x=True, expand_y=True, element_justification='center')],
             ], vertical_alignment='top', pad=(1,1), expand_x=True, expand_y=True),
+            
+            # Advanced Settings Panel (toggleable) - initially hidden
+            sg.Column(make_advanced_settings_panel(), vertical_alignment='top', pad=(5,1), 
+                     expand_x=False, expand_y=True, key='_ADVANCED_COLUMN_')
         ],
         [
-            # Very bottom: Important buttons - centered without PARAMETERS button
+            # Very bottom: Important buttons - centered with settings toggle
             sg.Push(),
-            sg.Button('RESET', size=(12,2), pad=(5,5)),
+            sg.Button('RESET', size=(8,2), pad=(5,5)),
             sg.Button('TRANSFER DATA', key='TRANSFER DATA', size=(15,2), pad=(5,5)),
             sg.Button('SAVE STATE', key='SAVE_STATE', size=(12,2), pad=(5,5)),
             sg.Button('LOAD STATE', key='LOAD_STATE', size=(12,2), pad=(5,5)),
+            sg.Button('>', key='_TOGGLE_SETTINGS_', size=(3,2), pad=(5,5), tooltip='Toggle Advanced Settings'),
             sg.Push(),
         ],
     ]
