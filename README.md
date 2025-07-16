@@ -130,11 +130,17 @@ Custom frequencies can be entered directly in the frequency field.
 
 The ESP32 implements a custom serial protocol with the following sequence:
 
-1. **Reset Phase**: RESET low for 4 clock cycles
-2. **Start Phase**: SHIFT high for 1 clock cycle  
-3. **Data Phase**: RESET and SHIFT high, transmit 128 bits MSB first
-4. **End Phase**: SHIFT low, additional clock cycles
+1. **Reset Phase**: RESET low for 2 clock cycles (preparation)
+2. **Start Phase**: SHIFT high for 1 clock cycle (start transmission signal)
+3. **Data Phase**: RESET and SHIFT both high, transmit 128 bits MSB first
+4. **End Phase**: SHIFT low (end of transmission), 2 additional clock cycles to save shift status
 5. **Idle Phase**: All signals return to idle state
+
+**Key Points:**
+- SHIFT remains HIGH during the entire 128-bit data transmission
+- Data is transmitted MSB first (bit 127 to bit 0)
+- Data changes on clock falling edge, sampled on rising edge
+- SHIFT signal indicates when valid data transmission is occurring
 
 ## Files Generated
 
