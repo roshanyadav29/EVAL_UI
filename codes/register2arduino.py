@@ -67,9 +67,9 @@ def reg2ino(Data, clk_freq_khz):
                                      line.strip().startswith('const int RESET_PIN')):
                 continue  # Skip existing GPIO pin lines
 
-            # For transfer data, set function call to sendTimerBasedData()
-            if line.strip() == "sendTimerBasedResetOnly();":
-                line = "  sendTimerBasedData();\n"
+            # For transfer data, set function call to sendDataSequence()
+            if line.strip() == "sendResetSequence();":
+                line = "  sendDataSequence();\n"
                 print("Changed to timer-based data transfer mode")
 
             file.write(line)
@@ -105,8 +105,8 @@ def reset_only(clk_freq_khz):
     str14 = str(reset_pin)
     str15 = ";\nconst int LED_BUILTIN = 2;    // Built-in LED pin (usually GPIO 2 on ESP32)"
 
-    # For reset-only, set function call to sendTimerBasedResetOnly()
-    str16 = "  sendTimerBasedResetOnly();"
+    # For reset-only, set function call to sendResetSequence()
+    str16 = "  sendResetSequence();"
 
     with in_place.InPlace("main/main.ino") as file:
         skip_gpio_lines = False
@@ -130,7 +130,7 @@ def reset_only(clk_freq_khz):
                 continue  # Skip existing GPIO pin lines
 
             # For reset-only, set function call to sendTimerBasedResetOnly()
-            if line.strip() == "sendTimerBasedData();":
+            if line.strip() == "sendDataSequence();":
                 line = str16 + "\n"
                 print("Changed to timer-based reset-only mode")
 

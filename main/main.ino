@@ -16,26 +16,15 @@ const int lenData = 16;  // Number of bytes in Data array (128 bits total)
 
 /*MODIFY CLK_FREQ HERE*/ int clk_freq_khz = 100;
 
-// Calculate delay based on frequency (half period in microseconds) - for legacy functions
-int clk_half_period_us;
-
-// High-precision timing using ESP32 hardware timer
-hw_timer_t * timer = NULL;
-volatile bool timer_flag = false;
-volatile bool clock_state = false;
-
-// Forward declarations
-void IRAM_ATTR onTimer();
-void IRAM_ATTR waitForTimerTicks(int ticks);
-void IRAM_ATTR waitForFallingEdge();
-void IRAM_ATTR waitForRisingEdge();
-void sendTimerBasedData();
-void sendTimerBasedResetOnly();
+// Protocol control variables
+bool reset_complete = false;
+bool transmission_complete = false;
 
 void setup() {
   // Initialize serial for debugging
   Serial.begin(115200);
   delay(1000);
+  Serial.println("ESP32 Custom Protocol Controller");
 
   // Configure GPIO pins
   pinMode(LED_BUILTIN, OUTPUT);
@@ -51,163 +40,123 @@ void setup() {
   digitalWrite(RESET_PIN, HIGH);  // Reset high normally
   digitalWrite(LED_BUILTIN, HIGH);
 
-  // Setup hardware timer for precise clock generation
-  // ESP32 Arduino Core 3.x timer API
-  // Calculate timer frequency: for 100kHz clock, we need 200kHz timer (2 ticks per cycle)
-  uint32_t timer_frequency = clk_freq_khz * 2 * 1000;  // Timer frequency in Hz
-  
-  // Calculate legacy delay variable for compatibility
-  clk_half_period_us = 1000000 / (2 * clk_freq_khz * 1000);
-  
-  timer = timerBegin(timer_frequency);  // Initialize timer with frequency
-  timerAttachInterrupt(timer, &onTimer);  // Attach interrupt function
-  timerStart(timer);  // Start the timer
-  
+  // Calculate and display timing information
+  uint32_t half_period_us = 1000000 / (2 * clk_freq_khz * 1000);  // Half period in microseconds
+
+  // Output configuration
   Serial.print("Clock frequency: ");
   Serial.print(clk_freq_khz);
   Serial.println(" kHz");
-  Serial.print("Timer frequency: ");
-  Serial.print(timer_frequency);
-  Serial.println(" Hz");
+  Serial.print("Half period: ");
+  Serial.print(half_period_us);
+  Serial.println(" us");
 
   delay(1000);  // Short delay for initialization
 
-  // Send data using custom protocol
-  sendTimerBasedResetOnly();
-
+  // Perform reset sequence
+  sendResetSequence();
   digitalWrite(LED_BUILTIN, LOW);
+  
+  Serial.println("Reset complete, system ready");
 }
 
 void loop() {
-  // Stay in idle state - transmission completed in setup()
+  // Optional: implement command handling here
+  // For now, just stay in idle state
 }
 
-// Timer interrupt service routine - optimized for precision
-void IRAM_ATTR onTimer() {
-  timer_flag = true;
-  clock_state = !clock_state;
-  // Use digitalWrite for compatibility
-  digitalWrite(CLOCK_PIN, clock_state);
-}
-
-void sendTimerBasedData() {
-  Serial.println("Starting timer-based data transmission...");
+void sendResetSequence() {
+  Serial.println("Starting reset sequence...");
   
-  // 1. Setup initial state - stop timer first
-  timerStop(timer);
+  // Calculate timing
+  uint32_t half_period_us = 1000000 / (2 * clk_freq_khz * 1000);  // Half period in microseconds
+  
+  // Prepare for reset
+  digitalWrite(LED_BUILTIN, HIGH);
+  reset_complete = false;
+  
+  // Set initial state
   digitalWrite(RESET_PIN, LOW);
   digitalWrite(SHIFT_PIN, LOW);
   digitalWrite(DATA_PIN, LOW);
   digitalWrite(CLOCK_PIN, LOW);
-  clock_state = false;
-  timer_flag = false;
   
-  // Start timer for precise timing
-  timerStart(timer);
+  Serial.print("Half period: ");
+  Serial.print(half_period_us);
+  Serial.println(" us");
   
-  // 2. RESET low for exactly 2 clock cycles (4 timer half-periods)
-  waitForTimerTicks(4);
+  // Generate 2 clock cycles (4 half periods) with RESET LOW
+  for (int i = 0; i < 4; i++) {
+    if (i % 2 == 0) {
+      digitalWrite(CLOCK_PIN, HIGH);
+    } else {
+      digitalWrite(CLOCK_PIN, LOW);
+    }
+    delayMicroseconds(half_period_us);
+  }
   
-  // 3. RESET goes high on next falling edge
-  waitForFallingEdge();
+  // Ensure we end on falling edge, then set RESET HIGH
+  digitalWrite(CLOCK_PIN, LOW);
   digitalWrite(RESET_PIN, HIGH);
   
-  // Wait for one complete clock cycle (2 half-periods)
-  waitForTimerTicks(2);
+  // Final state - keep clock low
+  digitalWrite(CLOCK_PIN, LOW);
+  digitalWrite(DATA_PIN, LOW);
+  digitalWrite(SHIFT_PIN, LOW);
   
-  // 4. SHIFT goes high on next falling edge
-  waitForFallingEdge();
+  reset_complete = true;
+  Serial.println("Reset sequence completed successfully");
+}
+
+void sendDataSequence() {
+  Serial.println("Starting data transmission...");
+  
+  // Calculate timing
+  uint32_t half_period_us = 1000000 / (2 * clk_freq_khz * 1000);  // Half period in microseconds
+  
+  // Prepare for data transmission
+  digitalWrite(LED_BUILTIN, HIGH);
+  transmission_complete = false;
+  
+  // First do reset
+  sendResetSequence();
+  
+  if (!reset_complete) {
+    Serial.println("Reset failed, aborting data transmission");
+    return;
+  }
+  
+  Serial.println("Starting data transmission after reset");
+  
+  // Set SHIFT HIGH for data transmission
   digitalWrite(SHIFT_PIN, HIGH);
   
-  // 5. Begin data transmission
-  for (int byte_index = 0; byte_index < lenData; byte_index++) {
-    byte current_byte = Data[byte_index];
-    
-    for (int bit_index = 7; bit_index >= 0; bit_index--) {
-      // Set DATA on falling edge
-      waitForFallingEdge();
-      digitalWrite(DATA_PIN, (current_byte >> bit_index) & 0x01);
+  // Transmit all 128 bits (16 bytes)
+  for (int byte_idx = 0; byte_idx < lenData; byte_idx++) {
+    for (int bit_idx = 0; bit_idx < 8; bit_idx++) {
+      // Generate clock falling edge
+      digitalWrite(CLOCK_PIN, LOW);
       
-      // Wait for rising edge (device samples DATA)
-      waitForRisingEdge();
+      // Set data bit (MSB first)
+      uint8_t bit_value = (Data[byte_idx] >> (7 - bit_idx)) & 0x01;
+      digitalWrite(DATA_PIN, bit_value);
+      
+      delayMicroseconds(half_period_us);
+      
+      // Generate clock rising edge
+      digitalWrite(CLOCK_PIN, HIGH);
+      delayMicroseconds(half_period_us);
     }
   }
   
-  // 6. SHIFT low after data transmission on falling edge
-  waitForFallingEdge();
-  digitalWrite(SHIFT_PIN, LOW);
-  
-  // 7. Post-transmission: 2 complete clock cycles (4 half-periods)
-  waitForTimerTicks(4);
-  
-  // Stop timer and set idle state
-  timerStop(timer);
+  // End with clock low and shift low
   digitalWrite(CLOCK_PIN, LOW);
-  digitalWrite(DATA_PIN, LOW);
-  digitalWrite(SHIFT_PIN, LOW);
-  
-  Serial.println("Timer-based transmission completed");
-}
-
-void sendTimerBasedResetOnly() {
-  Serial.println("Starting timer-based reset...");
-  
-  // Stop timer first
-  timerStop(timer);
-  digitalWrite(RESET_PIN, LOW);
   digitalWrite(SHIFT_PIN, LOW);
   digitalWrite(DATA_PIN, LOW);
-  digitalWrite(CLOCK_PIN, LOW);
-  clock_state = false;
-  timer_flag = false;
   
-  // Start timer for precise timing
-  timerStart(timer);
+  transmission_complete = true;
+  Serial.println("Data transmission completed successfully");
   
-  // RESET low for exactly 2 clock cycles (4 timer half-periods)
-  waitForTimerTicks(4);
-  
-  // Return RESET to high state on falling edge
-  waitForFallingEdge();
-  digitalWrite(RESET_PIN, HIGH);
-  
-  // Stop timer and ensure idle state
-  timerStop(timer);
-  digitalWrite(CLOCK_PIN, LOW);
-  digitalWrite(DATA_PIN, LOW);
-  digitalWrite(SHIFT_PIN, LOW);
-  
-  Serial.println("Timer-based reset completed");
-}
-
-// Helper functions for precise timer synchronization
-void IRAM_ATTR waitForTimerTicks(int ticks) {
-  int tick_count = 0;
-  timer_flag = false;
-  while (tick_count < ticks) {
-    if (timer_flag) {
-      timer_flag = false;
-      tick_count++;
-    }
-  }
-}
-
-void IRAM_ATTR waitForFallingEdge() {
-  // Wait for next timer tick when clock goes low
-  while (!timer_flag) { /* wait */ }
-  timer_flag = false;
-  while (clock_state) {  // Wait until we're on falling edge
-    while (!timer_flag) { /* wait */ }
-    timer_flag = false;
-  }
-}
-
-void IRAM_ATTR waitForRisingEdge() {
-  // Wait for next timer tick when clock goes high
-  while (!timer_flag) { /* wait */ }
-  timer_flag = false;
-  while (!clock_state) {  // Wait until we're on rising edge
-    while (!timer_flag) { /* wait */ }
-    timer_flag = false;
-  }
+  // Turn off LED
+  digitalWrite(LED_BUILTIN, LOW);
 }
