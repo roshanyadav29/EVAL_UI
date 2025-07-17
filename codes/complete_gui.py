@@ -168,8 +168,11 @@ def RUN():
                     # Convert clock frequency to integer with error handling
                     try:
                         clk_freq_khz = int(clk_freq_raw)
+                        if clk_freq_khz < 1 or clk_freq_khz > 10000:
+                            log_to_console(f"Clock frequency {clk_freq_khz} kHz out of range (1-10000), using 100 kHz")
+                            clk_freq_khz = 100
                     except ValueError as e:
-                        log_to_console(f"Clock frequency error, using default 100 kHz")
+                        log_to_console(f"Invalid clock frequency '{clk_freq_raw}', using default 100 kHz")
                         clk_freq_khz = 100
                     
                     log_to_console(f"Clock: {clk_freq_khz} kHz, Port: {selected_port}")
