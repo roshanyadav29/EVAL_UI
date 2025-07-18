@@ -2,6 +2,11 @@
 // This code is designed to run on an ESP32 board and implements a custom serial protocol
 // for communication with a slave device. It uses GPIO pins to send data in a specific sequence
 
+#include <SPI.h>
+
+#define DEBUG_STATEMENT false
+
+// Note: SPI uses default pins (CLK=18, MOSI=23 for VSPI) unless custom pins are specified
 /*MODIFY GPIO PINS HERE*/ 
 const int CLOCK_PIN = 27;     // Clock GPIO pin
 const int DATA_PIN = 25;      // Data GPIO pin  
@@ -16,165 +21,78 @@ const int lenData = 16; // Number of bytes in Data array (128 bits total)
 
 /*MODIFY CLK_FREQ HERE*/ int clk_freq_khz = 100;
 
-const uint32_t half_period_us = 1000000 / (2 * clk_freq_khz * 1000);;
-
-// Protocol control variables
-bool reset_complete = false;
-bool transmission_complete = false;
-
 void setup()
 {
-  // Initialize serial for debugging
+#if (DEBUG_STATEMENT)
   Serial.begin(115200);
-  delay(1000);
-  Serial.println("ESP32 Custom Protocol Controller");
+  while (!Serial)
+    delay(10);
+  Serial.println("ESP32 Custom Protocol Controller (SPI)");
+#endif
 
   // Configure GPIO pins
   pinMode(LED_BUILTIN, OUTPUT);
-  pinMode(CLOCK_PIN, OUTPUT);
-  pinMode(DATA_PIN, OUTPUT);
   pinMode(SHIFT_PIN, OUTPUT);
   pinMode(RESET_PIN, OUTPUT);
 
-  // Initialize pins to default state
-  digitalWrite(CLOCK_PIN, LOW);
-  digitalWrite(DATA_PIN, LOW);
-  digitalWrite(SHIFT_PIN, LOW);
-  digitalWrite(RESET_PIN, HIGH); // Reset high normally
   digitalWrite(LED_BUILTIN, HIGH);
+  digitalWrite(SHIFT_PIN, LOW);
+  digitalWrite(RESET_PIN, HIGH);
 
-  // Output configuration
-  Serial.print("Clock frequency: ");
-  Serial.print(clk_freq_khz);
-  Serial.println(" kHz");
-  Serial.print("Half period: ");
-  Serial.print(half_period_us);
-  Serial.println(" us");
+  // Initialize SPI
+  SPI.begin();
+  SPI.setFrequency(clk_freq_khz * 1000); // Set frequency in Hz
+  SPI.setDataMode(SPI_MODE0);            // Mode 0: CPOL=0, CPHA=0
+  SPI.setBitOrder(MSBFIRST);             // MSB first
 
-  delay(1000); // Short delay for initialization
-
-  // Perform reset sequence
+  // Perform reset sequence and send data
   sendDataSequence();
-  digitalWrite(LED_BUILTIN, LOW);
-
-  Serial.println("Reset complete, system ready");
 }
 
 void loop()
 {
-  // Optional: implement command handling here
-  // For now, just stay in idle state
+  // do nothing
 }
 
 void sendResetSequence()
 {
+#if (DEBUG_STATEMENT)
   Serial.println("Starting reset sequence...");
-
-  // Prepare for reset
+#endif
   digitalWrite(LED_BUILTIN, HIGH);
-  reset_complete = false;
+  digitalWrite(RESET_PIN, LOW); // Active low reset
 
-  // Set initial state
-  digitalWrite(RESET_PIN, LOW);
-  digitalWrite(SHIFT_PIN, LOW);
-  digitalWrite(DATA_PIN, LOW);
-  digitalWrite(CLOCK_PIN, LOW);
+  // Generate few clock cycles with dummy data
+  SPI.transfer(0x00); // 8 cycles per transfer
 
-  Serial.print("Half period: ");
-  Serial.print(half_period_us);
-  Serial.println(" us");
-
-  // Generate 2 clock cycles (4 half periods) with RESET LOW
-  for (int i = 0; i < 4; i++)
-  {
-    if (i % 2 == 0)
-    {
-      digitalWrite(CLOCK_PIN, HIGH);
-    }
-    else
-    {
-      digitalWrite(CLOCK_PIN, LOW);
-    }
-    delayMicroseconds(half_period_us);
-  }
-
-  // Ensure we end on falling edge, then set RESET HIGH
-  digitalWrite(CLOCK_PIN, LOW);
-  digitalWrite(RESET_PIN, HIGH);
-
-  // Final state - keep clock low
-  digitalWrite(CLOCK_PIN, LOW);
-  digitalWrite(DATA_PIN, LOW);
-  digitalWrite(SHIFT_PIN, LOW);
-
-  reset_complete = true;
-  Serial.println("Reset sequence completed successfully");
+  digitalWrite(RESET_PIN, HIGH); // End reset
+  digitalWrite(LED_BUILTIN, LOW);
+#if (DEBUG_STATEMENT)
+  Serial.println("Reset sequence completed");
+#endif
 }
 
 void sendDataSequence()
 {
+#if (DEBUG_STATEMENT)
   Serial.println("Starting data transmission...");
-
-  // Prepare for data transmission
-  digitalWrite(LED_BUILTIN, HIGH);
-  transmission_complete = false;
-
-  // First do reset
+#endif
   sendResetSequence();
+  digitalWrite(LED_BUILTIN, HIGH);
+  digitalWrite(SHIFT_PIN, HIGH); // SHIFT high during transmission
 
-  if (!reset_complete)
-  {
-    Serial.println("Reset failed, aborting data transmission");
-    return;
-  }
+  // Transmit 128 bits (16 bytes) in one call
+  uint8_t dummy[lenData]; // Dummy buffer for receive (not used)
 
-  Serial.println("Starting data transmission after reset");
+  SPI.transferBytes(Data, dummy, lenData); // Send all 16 bytes at once
 
-  // Set SHIFT HIGH for data transmission
-  digitalWrite(SHIFT_PIN, HIGH);
+  digitalWrite(SHIFT_PIN, LOW); // End SHIFT
+  
+  // Extra few cycles to save shift status
+  SPI.transfer(0x00);           // Dummy bytes for extra cycles
 
-  // Transmit all 128 bits (16 bytes)
-  for (int byte_idx = 0; byte_idx < lenData; byte_idx++)
-  {
-    for (int bit_idx = 0; bit_idx < 8; bit_idx++)
-    {
-      // Generate clock falling edge
-      digitalWrite(CLOCK_PIN, LOW);
-
-      // Set data bit (MSB first)
-      uint8_t bit_value = (Data[byte_idx] >> (7 - bit_idx)) & 0x01;
-      digitalWrite(DATA_PIN, bit_value);
-
-      delayMicroseconds(half_period_us);
-
-      // Generate clock rising edge
-      digitalWrite(CLOCK_PIN, HIGH);
-      delayMicroseconds(half_period_us);
-    }
-  }
-
-  // Generate 2 clock cycles (4 half periods) with RESET LOW
-  for (int i = 0; i < 4; i++)
-  {
-    if (i % 2 == 0)
-    {
-      digitalWrite(CLOCK_PIN, HIGH);
-    }
-    else
-    {
-      digitalWrite(CLOCK_PIN, LOW);
-    }
-    delayMicroseconds(half_period_us);
-  }
-
-  // End with clock low and shift low
-  digitalWrite(CLOCK_PIN, LOW);
-  digitalWrite(SHIFT_PIN, LOW);
-  digitalWrite(DATA_PIN, LOW);
-
-  transmission_complete = true;
-  Serial.println("Data transmission completed successfully");
-
-  // Turn off LED
   digitalWrite(LED_BUILTIN, LOW);
+#if (DEBUG_STATEMENT)
+  Serial.println("Data transmission completed");
+#endif
 }
