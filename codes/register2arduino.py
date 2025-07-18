@@ -44,7 +44,14 @@ def reg2ino(Data, clk_freq_khz):
 
     with in_place.InPlace("main/main.ino") as file:
         skip_gpio_lines = False
+        in_setup_function = False
         for line in file:
+            # Track if we're in the setup() function
+            if line.strip().startswith("void setup()"):
+                in_setup_function = True
+            elif line.strip() == "}" and in_setup_function:
+                in_setup_function = False
+                
             if line.startswith('/*MODIFY DATA HERE*/'):
                 line = str1 + str2 + str3 + "\n"
                 print(line)
@@ -67,10 +74,10 @@ def reg2ino(Data, clk_freq_khz):
                                      line.strip().startswith('const int RESET_PIN')):
                 continue  # Skip existing GPIO pin lines
 
-            # For transfer data, set function call to sendDataSequence()
-            if line.strip() == "sendResetSequence();":
+            # Only replace function call in setup(), not in other functions
+            if in_setup_function and line.strip() == "sendResetSequence();":
                 line = "  sendDataSequence();\n"
-                print("Changed to timer-based data transfer mode")
+                print("Changed to data transfer mode in setup()")
 
             file.write(line)
 
@@ -110,7 +117,14 @@ def reset_only(clk_freq_khz):
 
     with in_place.InPlace("main/main.ino") as file:
         skip_gpio_lines = False
+        in_setup_function = False
         for line in file:
+            # Track if we're in the setup() function
+            if line.strip().startswith("void setup()"):
+                in_setup_function = True
+            elif line.strip() == "}" and in_setup_function:
+                in_setup_function = False
+                
             if line.startswith('/*MODIFY CLK_FREQ HERE*/'):
                 line = str4 + str5 + str6 + "\n"
                 print(line)
@@ -129,10 +143,10 @@ def reset_only(clk_freq_khz):
                                      line.strip().startswith('const int RESET_PIN')):
                 continue  # Skip existing GPIO pin lines
 
-            # For reset-only, set function call to sendTimerBasedResetOnly()
-            if line.strip() == "sendDataSequence();":
+            # Only replace function call in setup(), not in other functions
+            if in_setup_function and line.strip() == "sendDataSequence();":
                 line = str16 + "\n"
-                print("Changed to timer-based reset-only mode")
+                print("Changed to reset-only mode in setup()")
 
             file.write(line)
 
