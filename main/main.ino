@@ -21,7 +21,10 @@ const int SHIFT_PIN = 26;      // Shift GPIO pin (high during data transmission)
 const int RESET_PIN = 33;     // Reset GPIO pin (low during transmission, high normally)
 const int LED_BUILTIN = 2;    // Built-in LED pin (usually GPIO 2 on ESP32)
 #ifndef LED_BUILTIN
+  // If LED_BUILTIN is not defined, use GPIO 2 as the built-in LED pin
+  #define LED_BUILTIN 2
 #endif
+
 // Value to be sent by the MASTER (128 bits = 16 bytes)
 /*MODIFY DATA HERE*/ byte Data[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 
