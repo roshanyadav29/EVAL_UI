@@ -6,13 +6,15 @@ Output format : Dictionary
 """
 def An2Bits(gui_dict):
     """Input : dictionary provided by the GUI (GUI Output)
-       Output: dictionary (with same keys as input) with bit values instead
-       of analog values
+       Output: dictionary (with same keys as input) with integer values
+       ready for register assignment (not binary strings)
     """
     bit_dict = {}
     for key in gui_dict:
-        #print(type(gui_dict[key]))
-        bit_dict[key] = bin(int(gui_dict[key]))[2:]#to remove 0b in the beginning which comes from the bin function of python
+        # Convert GUI values to integers
+        # Booleans: True -> 1, False -> 0
+        # Strings: "7" -> 7, "127" -> 127, etc.
+        bit_dict[key] = int(gui_dict[key])
     return bit_dict
     #print(bit_dict)
 #An2Bits({'lnadb': True})

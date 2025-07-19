@@ -20,7 +20,8 @@ const int DATA_PIN = 23;      // Data GPIO pin
 const int SHIFT_PIN = 26;      // Shift GPIO pin (high during data transmission)
 const int RESET_PIN = 33;     // Reset GPIO pin (low during transmission, high normally)
 const int LED_BUILTIN = 2;    // Built-in LED pin (usually GPIO 2 on ESP32)
-
+#ifndef LED_BUILTIN
+#endif
 // Value to be sent by the MASTER (128 bits = 16 bytes)
 /*MODIFY DATA HERE*/ byte Data[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 
@@ -34,7 +35,7 @@ void setup()
   Serial.begin(SERIAL_BAUD);
   while (!Serial)
     delay(10);
-    
+
 #if (DEBUG_STATEMENT)
   Serial.println("ESP32 Custom Protocol Controller (SPI)");
 #endif
@@ -54,9 +55,6 @@ void setup()
   SPI.setDataMode(SPI_MODE0);            // Mode 0: CPOL=0, CPHA=0
   SPI.setBitOrder(MSBFIRST);             // MSB first
 
-  // Perform reset sequence and send data
-  sendDataSequence();
-  
 #if (DEBUG_STATEMENT)
   Serial.println("Ready for serial data transfer commands");
 #endif
@@ -68,7 +66,7 @@ void loop()
   if (Serial.available()) {
     handleSerialCommand();
   }
-  
+
   // Small delay to prevent excessive CPU usage
   delay(10);
 }
@@ -101,12 +99,10 @@ void sendDataSequence()
   digitalWrite(SHIFT_PIN, HIGH); // SHIFT high during transmission
 
   // Transmit 128 bits (16 bytes) in one call
-  uint8_t dummy[lenData]; // Dummy buffer for receive (not used)
-
-  SPI.transferBytes(Data, dummy, lenData); // Send all 16 bytes at once
+  SPI.writeBytes(Data, lenData); // Send all 16 bytes at once (write-only)
 
   digitalWrite(SHIFT_PIN, LOW); // End SHIFT
-  
+
   // Extra few cycles to save shift status
   SPI.transfer(0x00);           // Dummy bytes for extra cycles
 
@@ -122,10 +118,10 @@ void handleSerialCommand()
   static byte receivedData[EXPECTED_DATA_SIZE];
   static int dataIndex = 0;
   static bool receivingData = false;
-  
+
   while (Serial.available() > 0) {
     char receivedChar = Serial.read();
-    
+
     if (receivedChar == DATA_START_MARKER) {
       // Start of new data packet
       receivingData = true;
@@ -141,12 +137,12 @@ void handleSerialCommand()
         for (int i = 0; i < EXPECTED_DATA_SIZE; i++) {
           Data[i] = receivedData[i];
         }
-        
+
         // Send confirmation and execute data sequence
         Serial.println("DATA_UPDATED");
         sendDataSequence();
         Serial.println("TRANSFER_COMPLETE");
-        
+
 #if (DEBUG_STATEMENT)
         Serial.print("Updated data: ");
         for (int i = 0; i < EXPECTED_DATA_SIZE; i++) {
