@@ -153,7 +153,7 @@ def make_advanced_settings_panel():
     return [
         [sg.Frame('ADVANCED SETTINGS', settings_layout, font='Any 8', pad=(5,5), 
                  expand_x=False, expand_y=False, element_justification='left', 
-                 key='_ADVANCED_FRAME_', visible=False)]
+                 key='_ADVANCED_FRAME_', visible=True)]
     ]
 
 def make_layout():
@@ -190,13 +190,13 @@ def make_layout():
                      expand_x=False, expand_y=True, key='_ADVANCED_COLUMN_')
         ],
         [
-            # Very bottom: Important buttons - centered with settings toggle
+            # Very bottom: Important buttons - centered
             sg.Push(),
             sg.Button('RESET', size=(8,2), pad=(5,5)),
             sg.Button('TRANSFER DATA', key='TRANSFER DATA', size=(15,2), pad=(5,5)),
+            sg.Button('UPLOAD DATA', key='UPLOAD DATA', size=(12,2), pad=(5,5)),
             sg.Button('SAVE STATE', key='SAVE_STATE', size=(12,2), pad=(5,5)),
             sg.Button('LOAD STATE', key='LOAD_STATE', size=(12,2), pad=(5,5)),
-            sg.Button('>', key='_TOGGLE_SETTINGS_', size=(3,2), pad=(5,5), tooltip='Toggle Advanced Settings'),
             sg.Push(),
         ],
     ]
