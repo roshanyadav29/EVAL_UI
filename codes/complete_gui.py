@@ -75,12 +75,12 @@ def RUN():
     
     def save_bits_to_file(Data, filename="WRITTEN_TO_CHIP.txt"):
         """
-        Export 128-bit configuration to detailed text file for analysis.
+        Export 128-bit configuration to CSV format for easy editing.
         
-        Creates a comprehensive report showing:
-        - Individual bit values with positions
-        - Byte-by-byte breakdown in hex and binary
-        - Summary statistics and complete bit string
+        Creates a simple CSV file with:
+        - Bit Number: Sequential from 1 to 128
+        - PBit: Position bit from 127 down to 0 (MSB first)
+        - Value: 0 or 1
         
         Args:
             Data (list): 16-byte list representing 128-bit configuration
@@ -91,40 +91,18 @@ def RUN():
         """
         try:
             with open(filename, "w+") as f:
-                f.write("128-Bit Configuration (MSB first):\n")
-                f.write("=" * 50 + "\n\n")
+                # Write CSV header
+                f.write("Bit Number,PBit,Value\n")
                 
-                bit_counter = 0
+                bit_number = 1
                 for byte_index, byte_val in enumerate(Data):
-                    f.write(f"Byte {byte_index + 1} (0x{byte_val:02X}):\n")
-                    
                     # Convert byte to 8 bits (MSB first)
                     for bit_pos in range(7, -1, -1):  # 7, 6, 5, 4, 3, 2, 1, 0
                         bit_value = (byte_val >> bit_pos) & 1
-                        f.write(f"  Bit {bit_counter:3d}: {bit_value}\n")
-                        bit_counter += 1
-                    
-                    f.write("\n")  # Add spacing between bytes
-                
-                # Summary section with multiple formats
-                f.write("=" * 50 + "\n")
-                f.write("SUMMARY:\n")
-                f.write(f"Total bits: {bit_counter}\n")
-                f.write(f"Bytes: {Data}\n")
-                f.write(f"Hex: {' '.join(f'0x{b:02X}' for b in Data)}\n")
-                
-                # Binary representation in groups of 8
-                f.write("Binary (8-bit groups):\n")
-                for i, byte_val in enumerate(Data):
-                    f.write(f"Byte {i+1:2d}: {byte_val:08b}\n")
-                
-                # Single line binary (all 128 bits)
-                f.write("\nComplete 128-bit string:\n")
-                binary_string = ''.join(f'{byte_val:08b}' for byte_val in Data)
-                # Split into groups of 32 bits for readability
-                for i in range(0, 128, 32):
-                    f.write(f"Bits {i:3d}-{i+31:3d}: {binary_string[i:i+32]}\n")
-                
+                        pbit = 127 - (bit_number - 1)  # PBit starts at 127 and decreases
+                        f.write(f"{bit_number},{pbit},{bit_value}\n")
+                        bit_number += 1
+            
         except Exception as e:
             log_to_console(f"Error saving bits to file: {str(e)}")
             return False
