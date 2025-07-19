@@ -1,31 +1,54 @@
+"""
+GUI Layout Parameters and Components Module
+
+Defines the PySimpleGUI layout structure for ESP32 chip configuration interface.
+This module creates organized parameter sections corresponding to the 128-bit register
+mapping, including enable controls, delay settings, current controls, and filters.
+
+Key Layout Sections:
+- CSH EN: Channel select controls (8 bits)
+- PI EN: Pixel interface enables (8 bits) 
+- PI DELAY CTRL: Delay control values (8 × 7-bit fields)
+- PI CTRL: DC, capacitor, and sum delay controls
+- CURRENT CTRL: Current control for various blocks
+- ENABLES & RESET: Digital enable controls
+- FILTER: Low-pass and band-pass filter controls
+- TEST NETWORK: Test multiplexer and address controls
+- ADVANCED SETTINGS: Clock frequency, serial port, console
+"""
+
 import PySimpleGUI as sg
 import serial.tools.list_ports
-sg.theme('DefaultNoMoreNagging')
-# sg.theme('TanBlue')
 
-# Function to get available COM ports
+sg.theme('DefaultNoMoreNagging')  # Suppress PySimpleGUI theme warnings
+
 def get_available_ports(logger=None):
     """
-    Get available COM ports and detect Silicon Labs CP210x devices.
+    Detect available serial ports with ESP32 device auto-detection.
+    
+    Automatically identifies Silicon Labs CP210x USB-to-UART bridges commonly
+    used on ESP32 development boards for optimal default port selection.
     
     Args:
-        logger: Optional logging function to use instead of print
+        logger (function, optional): Logging function for status messages
     
     Returns:
         tuple: (port_list, default_port)
+            - port_list: List of all available COM ports
+            - default_port: Best guess for ESP32 port (CP210x preferred)
     """
     if logger is None:
-        logger = print  # Use print as default
+        logger = print
     
     ports = list(serial.tools.list_ports.comports())
     port_list = []
-    default_port = "COM3"  # fallback
+    default_port = "COM3"  # Windows fallback
     cp210x_found = False
     
     for p in ports:
         port_list.append(p.device)
         
-        # Check for Silicon Labs CP210x USB-to-UART bridge (common on ESP32 boards)
+        # Multi-field search for Silicon Labs CP210x devices (common ESP32 USB-UART)
         desc_str = str(p.description).lower()
         manuf_str = str(p.manufacturer).lower() if p.manufacturer else ""
         product_str = str(p.product).lower() if p.product else ""
@@ -43,43 +66,45 @@ def get_available_ports(logger=None):
     
     return port_list, default_port
 
-# --- Logical frames for new chip ---
+# ============================================================================
+# GUI LAYOUT COMPONENT DEFINITIONS
+# ============================================================================
+# Each section corresponds to specific bit fields in the 128-bit register.
+# Layout components are organized to match the register assignment mapping.
 
-# 1. CSH EN (8 ticks) - vertical layout with reduced spacing
+# CSH EN Controls (Bits 127-120): 8 individual enable checkboxes
 csh_en_layout = [
     [sg.CB(f'CSH EN {i}', key=f'_CSH_EN_{i}_', default=False, font='Any 8', pad=(1,1), expand_x=True)] for i in range(1, 9)
 ]
 
-# 2. PI EN (8 ticks) - vertical layout with reduced spacing  
+# PI EN Controls (Bits 119-112): 8 pixel interface enable checkboxes
 pi_en_layout = [
     [sg.CB(f'PI EN {i}', key=f'_PI_EN_{i}_', default=False, font='Any 8', pad=(1,1), expand_x=True)] for i in range(1, 9)
 ]
 
-# 5. PI DELAY CTRLs (1-8, 0-127, 7 bits each) - vertical layout with editable dropdowns
+# PI DELAY Controls (Multiple 7-bit fields): Delay settings for 8 PI channels (0-127 range)
 pi_delay_ctrl_layout = [
     [sg.Text(f'PI DELAY CTRL {i}', font='Any 8', expand_x=True), 
      sg.Combo([str(j) for j in range(128)], default_value='0', key=f'_PI_DELAY_CTRL{i}_', font='Any 8', readonly=False, expand_x=True)] for i in range(1, 9)
 ]
 
-# 6. PI SUM DELAY CTRL (0-127, 7 bits) - now in PI CTRL section with editable dropdown
+# PI Control Settings: Additional PI configuration parameters
 pi_sum_delay_ctrl_layout = [
     [sg.Text('SUM DELAY CTRL', font='Any 8', justification='left', expand_x=True), 
      sg.Combo([str(i) for i in range(128)], default_value='0', key='_PI_SUM_DELAY_CTRL_', font='Any 8', readonly=False, expand_x=True)]
 ]
 
-# 3. PI DC CTRL (0-7, 3 bits) - now in PI CTRL section with editable dropdown
 pi_dc_ctrl_layout = [
     [sg.Text('PI DC CTRL', font='Any 8', justification='left', expand_x=True), 
      sg.Combo([str(i) for i in range(8)], default_value='0', key='_PI_DC_CTRL_', font='Any 8', readonly=False, expand_x=True)]
 ]
 
-# 4. PI CAP CTRL (0-31, 5 bits) - now in PI CTRL section with editable dropdown
 pi_cap_ctrl_layout = [
     [sg.Text('PI CAP CTRL', font='Any 8', justification='left', expand_x=True), 
      sg.Combo([str(i) for i in range(32)], default_value='0', key='_PI_CAP_CTRL_', font='Any 8', readonly=False, expand_x=True)]
 ]
 
-# 8. BGR/CSH/PI/DEMOD/BUFF ICTRL (0-7, 3 bits each) - now CURRENT CTRL section with editable dropdowns
+# Current Control Settings: 3-bit current control for different circuit blocks (0-7 range)
 current_ctrl_layout = [
     [sg.Text('BGR OUT CTRL', font='Any 8', justification='left', expand_x=True), 
      sg.Combo([str(i) for i in range(8)], default_value='0', key='_BGR_OUT_CTRL_', font='Any 8', readonly=False, expand_x=True)],
@@ -93,7 +118,7 @@ current_ctrl_layout = [
      sg.Combo([str(i) for i in range(8)], default_value='0', key='_BUFF_ICTRL_', font='Any 8', readonly=False, expand_x=True)],
 ]
 
-# 9. ENABLES & RESET section - 3 vertical columns (2x3 grid: horizontal 3, vertical 2)
+# Digital Enable Controls: Various system enable signals organized in columns for space efficiency
 enables_reset_layout = [
     [
         sg.Column([
@@ -112,7 +137,7 @@ enables_reset_layout = [
     ]
 ]
 
-# 10. FILTER section - center aligned
+# Filter Controls: Low-pass and band-pass filter enable settings
 filter_layout = [
     [sg.CB('LPF EN', key='_LPF_EN_', default=False, font='Any 8', expand_x=True)],
     [sg.CB('LPF SAMPLE EN', key='_LPF_SAMP_EN_', default=False, font='Any 8', expand_x=True)],
@@ -120,7 +145,7 @@ filter_layout = [
     [sg.CB('BPF SAMPLE EN', key='_BPF_SAMP_EN_', default=False, font='Any 8', expand_x=True)],
 ]
 
-# 11. TEST NETWORK section - center aligned with editable dropdowns (0-15 range)
+# Test Network Controls: Test multiplexer and address selection (4-bit fields, 0-15 range)
 test_network_layout = [
     [sg.Text('TEST ADD', font='Any 8', justification='center', expand_x=True), 
      sg.Combo([str(i) for i in range(16)], default_value='0', key='_TEST_ADD_', font='Any 8', readonly=False, expand_x=True),
@@ -128,11 +153,26 @@ test_network_layout = [
      sg.Combo([str(i) for i in range(16)], default_value='0', key='_TMUX_SEL_', font='Any 8', readonly=False, expand_x=True)]
 ]
 
-# Advanced Settings Panel
+# ============================================================================
+# ADVANCED SETTINGS PANEL
+# ============================================================================
+
 def make_advanced_settings_panel():
+    """
+    Create the advanced settings panel with system-level configurations.
+    
+    Includes:
+    - Clock frequency selection (50kHz - 2MHz)
+    - Serial port auto-detection and selection
+    - Real-time console output with dark theme
+    - Port refresh and console clear utilities
+    
+    Returns:
+        list: PySimpleGUI layout for advanced settings frame
+    """
     port_list, default_port = get_available_ports()
     
-    # Clock frequency options (in kHz)
+    # Available clock frequencies for SPI communication (in kHz)
     clock_freq_options = ['50', '100', '200', '500', '1000', '2000']
     
     settings_layout = [
@@ -156,12 +196,27 @@ def make_advanced_settings_panel():
                  key='_ADVANCED_FRAME_', visible=True)]
     ]
 
+# ============================================================================
+# MAIN LAYOUT ASSEMBLY
+# ============================================================================
+
 def make_layout():
+    """
+    Assemble the complete GUI layout with all parameter sections and controls.
+    
+    Layout Structure:
+    - Left Column: CSH/PI enables, delay controls, system enables, test network
+    - Right Column: PI controls, current controls, filter settings
+    - Advanced Panel: Clock/port settings, console output
+    - Bottom Row: Main action buttons (Reset, Transfer, Upload, Save/Load)
+    
+    Returns:
+        list: Complete PySimpleGUI layout structure
+    """
     layout = [
         [
-            # Left section
+            # Left section: Primary chip configuration controls
             sg.Column([
-                # Top row: CSH EN, PI EN, PI DELAY CTRL in a line - reduced horizontal spacing
                 [
                     sg.Frame('CSH EN', csh_en_layout, font='Any 8', pad=(1,1), expand_x=True, expand_y=True, element_justification='center'),
                     sg.Frame('PI EN', pi_en_layout, font='Any 8', pad=(1,1), expand_x=True, expand_y=True, element_justification='center'),
@@ -171,26 +226,23 @@ def make_layout():
                 [sg.Frame('TEST NETWORK', test_network_layout, font='Any 8', pad=(1,1), expand_x=True, expand_y=True, element_justification='center')]
             ], vertical_alignment='top', pad=(1,1), element_justification='left', expand_x=True, expand_y=True),
             
-            # Right section - moved closer to left section
+            # Right section: Secondary configuration controls
             sg.Column([
-                # Top: PI CTRL
                 [sg.Frame('PI CTRL', [
                     pi_sum_delay_ctrl_layout[0],
                     pi_dc_ctrl_layout[0],
                     pi_cap_ctrl_layout[0]
                 ], font='Any 8', pad=(1,1), expand_x=True, expand_y=True, element_justification='center')],
-                # Middle: CURRENT CTRL
                 [sg.Frame('CURRENT CTRL', current_ctrl_layout, font='Any 8', pad=(1,1), expand_x=True, expand_y=True, element_justification='center')],
-                # Bottom: FILTER
                 [sg.Frame('FILTER', filter_layout, font='Any 8', pad=(1,1), expand_x=True, expand_y=True, element_justification='center')],
             ], vertical_alignment='top', pad=(1,1), expand_x=True, expand_y=True),
             
-            # Advanced Settings Panel (toggleable) - initially hidden
+            # Advanced settings panel: System configuration and monitoring
             sg.Column(make_advanced_settings_panel(), vertical_alignment='top', pad=(5,1), 
                      expand_x=False, expand_y=True, key='_ADVANCED_COLUMN_')
         ],
         [
-            # Very bottom: Important buttons - centered
+            # Main action buttons: Core application operations
             sg.Push(),
             sg.Button('RESET', size=(8,2), pad=(5,5)),
             sg.Button('TRANSFER DATA', key='TRANSFER DATA', size=(15,2), pad=(5,5)),

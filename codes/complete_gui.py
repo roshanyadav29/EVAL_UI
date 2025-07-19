@@ -1,4 +1,26 @@
+"""
+ESP32 Configuration GUI - Main Application Module
+
+This module provides the main GUI application for configuring ESP32-based chip control.
+It handles user interactions, data processing, and communication with the ESP32 device
+through both serial transfer and firmware upload methods.
+
+Key Features:
+- Real-time configuration of 128-bit register values
+- Dual transfer modes: Serial (fast) and Upload (permanent)
+- Threaded operations to prevent GUI freezing
+- State management for configuration presets
+- Advanced settings with clock frequency control
+"""
+
 def RUN():
+    """
+    Main application entry point - initializes and runs the GUI event loop.
+    
+    This function sets up the PySimpleGUI interface, initializes helper functions,
+    and manages the main event loop for user interactions. It handles all GUI
+    events including data transfer, upload operations, and state management.
+    """
 
     import PySimpleGUI as sg
     import tkinter as tk
@@ -16,23 +38,33 @@ def RUN():
     import threading
     import time
 
-    #GUI OPERATIONS
+    # Initialize main GUI window
     window = sg.Window('GUI ESP32 Configuration', make_layout(), default_element_size=(50, 1), 
                       finalize=True, use_default_focus=False)
     
-    # Let window size itself initially
-    window.refresh()
+    window.refresh()  # Let window size itself initially
     
-    # Initialize console with welcome message
     def log_to_console(message):
+        """
+        Add timestamped message to the console output with auto-scroll.
+        
+        Features:
+        - Automatic timestamping
+        - Text length management (prevents memory issues)
+        - Auto-scroll to bottom for latest messages
+        
+        Args:
+            message (str): Message to display in console
+        """
         timestamp = datetime.datetime.now().strftime("%H:%M:%S")
         console_text = f"[{timestamp}] {message}"
         current_text = window['_CONSOLE_OUTPUT_'].get()
-        # Ensure we don't have too much text accumulating
+        
+        # Prevent excessive memory usage by trimming old text
         if len(current_text) > 10000:  # Keep last 10k characters
             current_text = current_text[-8000:]
         
-        # Add proper line break
+        # Add proper line formatting
         if current_text:
             new_text = current_text + "\n" + console_text
         else:
@@ -43,11 +75,19 @@ def RUN():
     
     def save_bits_to_file(Data, filename="WRITTEN_TO_CHIP.txt"):
         """
-        Save 128 bits (16 bytes) as individual bits to a text file
+        Export 128-bit configuration to detailed text file for analysis.
         
-        Input:
-        - Data: 16-byte list
-        - filename: output file name
+        Creates a comprehensive report showing:
+        - Individual bit values with positions
+        - Byte-by-byte breakdown in hex and binary
+        - Summary statistics and complete bit string
+        
+        Args:
+            Data (list): 16-byte list representing 128-bit configuration
+            filename (str): Output filename (default: "WRITTEN_TO_CHIP.txt")
+            
+        Returns:
+            bool: True if successful, False if error occurred
         """
         try:
             with open(filename, "w+") as f:
@@ -66,7 +106,7 @@ def RUN():
                     
                     f.write("\n")  # Add spacing between bytes
                 
-                # Summary section
+                # Summary section with multiple formats
                 f.write("=" * 50 + "\n")
                 f.write("SUMMARY:\n")
                 f.write(f"Total bits: {bit_counter}\n")
@@ -91,7 +131,7 @@ def RUN():
         
         return True
     
-    # Global variables for thread communication
+    # Thread management for non-blocking operations
     upload_in_progress = False
     upload_thread = None
     serial_in_progress = False
@@ -99,7 +139,15 @@ def RUN():
     
     def threaded_upload(file_name, port, operation_type="transfer"):
         """
-        Run upload in a separate thread to prevent GUI freezing
+        Execute ESP32 firmware upload in separate thread to prevent GUI freezing.
+        
+        Uses Arduino CLI to compile and upload firmware with embedded configuration.
+        This is the "permanent" method that programs the ESP32 with new firmware.
+        
+        Args:
+            file_name (str): Arduino project directory name
+            port (str): Serial port for ESP32 communication
+            operation_type (str): Type of operation for logging purposes
         """
         global upload_in_progress
         upload_in_progress = True
@@ -110,7 +158,7 @@ def RUN():
             else:
                 log_to_console("Uploading reset to ESP32...")
             
-            # Actual upload
+            # Execute Arduino CLI upload process
             result = upload(file_name, port)
             
             if result:
@@ -132,7 +180,15 @@ def RUN():
     
     def threaded_serial_operation(operation_type, port, data=None):
         """
-        Run serial operations in a separate thread to prevent GUI freezing
+        Execute serial communication in separate thread to prevent GUI freezing.
+        
+        Handles fast serial transfer of configuration data to already-programmed ESP32.
+        This is the "temporary" method for testing configurations quickly.
+        
+        Args:
+            operation_type (str): "data_transfer" or "reset"
+            port (str): Serial port for communication
+            data (list, optional): 16-byte configuration data for transfer
         """
         global serial_in_progress
         serial_in_progress = True
@@ -161,23 +217,36 @@ def RUN():
     
     log_to_console("ESP32 Configuration Tool - Ready")
 
-    while True:  #EVENT LOOP : KEEPS THE GUI RUNNING UNTIL "CROSS" IS PRESSED
+    # ============================================================================
+    # MAIN EVENT LOOP - Process GUI events until window is closed
+    # ============================================================================
+    while True:
         event, values = window.read()
         
-        # Handle console clear
+        # ========================================
+        # Advanced Settings Panel Events
+        # ========================================
+        
         if event == '_CLEAR_CONSOLE_':
             window['_CONSOLE_OUTPUT_'].update('')
             log_to_console("Console cleared")
         
-        # Handle port refresh
         if event == '_REFRESH_PORTS_':
             port_list, default_port = get_available_ports(logger=log_to_console)
             window['_SERIAL_PORT_'].update(values=port_list, value=default_port)
             log_to_console(f"Ports refreshed ({len(port_list)} found)")
         
+        # ========================================
+        # Development/Debug Events
+        # ========================================
+        
         if (event == 'SHOW DICT VALUES') or (event == 'PARAMETERS'):
-            print(values)
+            print(values)  # Debug: Print all GUI values to console
 
+        # ========================================
+        # State Management Events
+        # ========================================
+        
         if (event == 'LOAD_STATE'):
             loadfile = filedialog.askopenfilename()
             if(loadfile):
@@ -209,11 +278,20 @@ def RUN():
             else:
                 log_to_console("Save cancelled")
         
-        if (event == 'TRANSFER DATA') :
+        # ========================================
+        # Data Transfer Operations
+        # ========================================
+        
+        if (event == 'TRANSFER DATA'):
+            """
+            TRANSFER DATA: Fast serial method for testing configurations.
+            Sends configuration directly to already-programmed ESP32 via serial protocol.
+            Changes are temporary and lost on ESP32 reset.
+            """
             log_to_console("Starting serial data transfer...")
             
             try:
-                # Filter out settings values - only pass control values to An2Bits
+                # Extract only chip configuration values (exclude GUI settings)
                 control_values = {}
                 settings_keys = ['_CLOCK_FREQ_', '_SERIAL_PORT_', '_CONSOLE_OUTPUT_', '_ADVANCED_FRAME_', '_ADVANCED_COLUMN_', '_REFRESH_PORTS_', '_CLEAR_CONSOLE_']
                 
@@ -221,104 +299,109 @@ def RUN():
                     if key not in settings_keys:
                         control_values[key] = value
                 
+                # Process configuration: GUI values → integers → 128-bit register
                 bit_dict = An2Bits(control_values)
-                Data = RegisterAssignment(bit_dict)  # Data is now a 16-byte list
+                Data = RegisterAssignment(bit_dict)  # Returns 16-byte list
                 selected_port = values.get('_SERIAL_PORT_', 'COM3')
                 
                 log_to_console(f"Port: {selected_port}, Data: {Data}")
                 
-                # Save data to file with individual bits
+                # Generate detailed configuration file for analysis
                 filename = "WRITTEN_TO_CHIP.txt"
                 if save_bits_to_file(Data, filename):
                     log_to_console(f"128-bit config saved to {filename}")
                 else:
                     log_to_console(f"Error saving config to {filename}")
                 
-                # Check if serial operation is already in progress
+                # Execute serial transfer in background thread
                 if serial_in_progress:
                     log_to_console("Serial operation already in progress, please wait...")
                 else:
-                    # Start the serial transfer in a separate thread
                     serial_thread = threading.Thread(target=threaded_serial_operation, args=("data_transfer", selected_port, Data))
                     serial_thread.start()
                     
             except Exception as e:
                 log_to_console(f"Serial transfer error: {str(e)}")
 
-        if (event == 'UPLOAD DATA') :
+        if (event == 'UPLOAD DATA'):
+            """
+            UPLOAD DATA: Permanent firmware method for production configurations.
+            Embeds configuration into ESP32 firmware and uploads via Arduino CLI.
+            Changes are permanent and survive ESP32 reset.
+            """
             log_to_console("Starting data upload...")
             
-            E1 = "OK"
-            if(E1 == "OK"):
+            try:
+                # Extract only chip configuration values (exclude GUI settings)
+                control_values = {}
+                settings_keys = ['_CLOCK_FREQ_', '_SERIAL_PORT_', '_CONSOLE_OUTPUT_', '_ADVANCED_FRAME_', '_ADVANCED_COLUMN_', '_REFRESH_PORTS_', '_CLEAR_CONSOLE_']
+                
+                for key, value in values.items():
+                    if key not in settings_keys:
+                        control_values[key] = value
+                
+                # Process configuration: GUI values → integers → 128-bit register
+                bit_dict = An2Bits(control_values)
+                Data = RegisterAssignment(bit_dict)  # Returns 16-byte list
+
+                # Extract and validate clock frequency setting
+                clk_freq_raw = values.get('_CLOCK_FREQ_', '100')
+                selected_port = values.get('_SERIAL_PORT_', 'COM3')
+                
                 try:
-                    # Filter out settings values - only pass control values to An2Bits
-                    control_values = {}
-                    settings_keys = ['_CLOCK_FREQ_', '_SERIAL_PORT_', '_CONSOLE_OUTPUT_', '_ADVANCED_FRAME_', '_ADVANCED_COLUMN_', '_REFRESH_PORTS_', '_CLEAR_CONSOLE_']
-                    
-                    for key, value in values.items():
-                        if key not in settings_keys:
-                            control_values[key] = value
-                    
-                    bit_dict = An2Bits(control_values)
-                    Data = RegisterAssignment(bit_dict)  # Data is now a 16-byte list
-
-                    # Get clock frequency from GUI (convert to integer)
-                    clk_freq_raw = values.get('_CLOCK_FREQ_', '100')
-                    selected_port = values.get('_SERIAL_PORT_', 'COM3')
-                    
-                    # Convert clock frequency to integer with error handling
-                    try:
-                        clk_freq_khz = int(clk_freq_raw)
-                        if clk_freq_khz < 1 or clk_freq_khz > 10000:
-                            log_to_console(f"Clock frequency {clk_freq_khz} kHz out of range (1-10000), using 100 kHz")
-                            clk_freq_khz = 100
-                    except ValueError as e:
-                        log_to_console(f"Invalid clock frequency '{clk_freq_raw}', using default 100 kHz")
+                    clk_freq_khz = int(clk_freq_raw)
+                    if clk_freq_khz < 1 or clk_freq_khz > 10000:
+                        log_to_console(f"Clock frequency {clk_freq_khz} kHz out of range (1-10000), using 100 kHz")
                         clk_freq_khz = 100
-                    
-                    log_to_console(f"Clock: {clk_freq_khz} kHz, Port: {selected_port}")
-                    
-                    reg2ino(Data, clk_freq_khz)
+                except ValueError as e:
+                    log_to_console(f"Invalid clock frequency '{clk_freq_raw}', using default 100 kHz")
+                    clk_freq_khz = 100
+                
+                log_to_console(f"Clock: {clk_freq_khz} kHz, Port: {selected_port}")
+                
+                # Embed configuration into Arduino firmware
+                reg2ino(Data, clk_freq_khz)
 
-                    # Save data to file with individual bits
-                    filename = "WRITTEN_TO_CHIP.txt"
-                    if save_bits_to_file(Data, filename):
-                        log_to_console(f"128-bit config saved to {filename}")
-                    else:
-                        log_to_console(f"Error saving config to {filename}")
+                # Generate detailed configuration file for analysis
+                filename = "WRITTEN_TO_CHIP.txt"
+                if save_bits_to_file(Data, filename):
+                    log_to_console(f"128-bit config saved to {filename}")
+                else:
+                    log_to_console(f"Error saving config to {filename}")
 
-                    E2 = "OK"
-                    if(E2 == "OK"):
-                        # Check if upload is already in progress
-                        if upload_in_progress:
-                            log_to_console("Upload already in progress, please wait...")
-                        else:
-                            # Start the upload in a separate thread
-                            upload_thread = threading.Thread(target=threaded_upload, args=("main", selected_port, "transfer"))
-                            upload_thread.start()
-                    else:
-                        log_to_console("Upload skipped")
-                except Exception as e:
-                    log_to_console(f"Upload error: {str(e)}")
-            else :
-                log_to_console("Upload cancelled")
+                # Execute firmware upload in background thread
+                if upload_in_progress:
+                    log_to_console("Upload already in progress, please wait...")
+                else:
+                    upload_thread = threading.Thread(target=threaded_upload, args=("main", selected_port, "transfer"))
+                    upload_thread.start()
+                    
+            except Exception as e:
+                log_to_console(f"Upload error: {str(e)}")
 
         if (event == 'RESET'):
+            """
+            RESET: Send reset signal to target chip via serial protocol.
+            Useful for initializing or clearing the target chip state.
+            """
             log_to_console("Performing serial reset...")
             try:
                 selected_port = values.get('_SERIAL_PORT_', 'COM3')
                 log_to_console(f"Port: {selected_port}")
                 
-                # Check if serial operation is already in progress
+                # Execute reset in background thread
                 if serial_in_progress:
                     log_to_console("Serial operation already in progress, please wait...")
                 else:
-                    # Start the serial reset in a separate thread
                     serial_thread = threading.Thread(target=threaded_serial_operation, args=("reset", selected_port))
                     serial_thread.start()
                     
             except Exception as e:
                 log_to_console(f"Serial reset error: {str(e)}")
+        
+        # ========================================
+        # Application Exit
+        # ========================================
         
         if event in (None, 'Cancel','Exit'):
             window.Close()
