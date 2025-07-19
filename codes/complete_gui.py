@@ -39,7 +39,7 @@ def RUN():
     import time
 
     # Initialize main GUI window
-    window = sg.Window('GUI ESP32 Configuration', make_layout(), default_element_size=(50, 1), 
+    window = sg.Window('HYDRA Configuration GUI', make_layout(), default_element_size=(50, 1), 
                       finalize=True, use_default_focus=False)
     
     window.refresh()  # Let window size itself initially
