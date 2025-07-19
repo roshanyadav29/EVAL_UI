@@ -1,6 +1,43 @@
+# Python Virtual Environment
 /.venv
+
+# Application Generated Files
 /WRITTEN_TO_CHIP.txt
+
+# Python Cache Files
 /codes/__pycache__
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE Files
 /codes/.idea
 .idea
 .vscode
+
+# ===== BUILD AND DISTRIBUTION ARTIFACTS =====
+# PyInstaller build artifacts
+build/
+dist/
+*.spec
+
+# Executable build temporary files
+*.manifest
+*.exe.config
+
+# Build logs and cache
+*.log
+.cache/
+
+# Distribution packages
+*.egg-info/
+.eggs/
+
+# Backup files created during build
+*.bak
+*.backup
+*~
+
+# Windows specific build files
+Thumbs.db
+*.lnk

@@ -17,7 +17,7 @@ Communication Methods:
 2. Serial Method: Direct UART communication with ESP32 for immediate transfer
 
 Dependencies:
-- in_place: For safe Arduino file modification
+- tempfile, shutil: For safe Arduino file modification (PyInstaller compatible)
 - serial: For UART communication with ESP32
 - time: For timing control and timeouts
 
@@ -25,9 +25,36 @@ File Targets:
 - main/main.ino: Arduino sketch for ESP32 SPI configuration
 """
 
-import in_place
+import tempfile
+import shutil
 import serial
 import time
+import sys
+import os
+
+def get_resource_path(relative_path):
+    """
+    Get absolute path to resource, works for development and PyInstaller.
+    
+    When running as a PyInstaller executable, files are extracted to a temporary
+    directory (_MEIPASS). This function returns the correct path in both scenarios.
+    
+    Args:
+        relative_path (str): Relative path to the resource file
+        
+    Returns:
+        str: Absolute path to the resource file
+    """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except AttributeError:
+        # Running in development environment
+        base_path = os.path.dirname(os.path.abspath(__file__))
+        # Go up one level from codes/ to the project root
+        base_path = os.path.dirname(base_path)
+    
+    return os.path.join(base_path, relative_path)
 
 def reg2ino(Data, clk_freq_khz):
     """
@@ -64,7 +91,6 @@ def reg2ino(Data, clk_freq_khz):
     print(f"GPIO pins - Clock: {clock_pin}, Data: {data_pin}, Shift: {shift_pin}, Reset: {reset_pin}")
 
     # === ARDUINO FILE MODIFICATION STRINGS ===
-    # === ARDUINO FILE MODIFICATION STRINGS ===
     # Prepare replacement strings for different sections of main.ino
     
     # Data array section - 16-byte register configuration
@@ -89,48 +115,76 @@ def reg2ino(Data, clk_freq_khz):
     str15 = ";     // Reset GPIO pin (low during transmission, high normally)\nconst int LED_BUILTIN = 2;    // Built-in LED pin (usually GPIO 2 on ESP32)"
 
     # === ARDUINO FILE PROCESSING ===
-    # In-place modification of main.ino with error-safe file handling
-    with in_place.InPlace("main/main.ino") as file:
-        skip_gpio_lines = False
-        in_setup_function = False
+    # Standard file modification with temporary file approach for PyInstaller compatibility
+    
+    # Get the correct path to main.ino (works in both dev and packaged environments)
+    source_ino_path = get_resource_path("main/main.ino")
+    
+    # For PyInstaller, create a working copy in a writable location
+    if hasattr(sys, '_MEIPASS'):
+        # Running as PyInstaller executable - create working copy
+        working_dir = os.path.join(os.getcwd(), "main")
+        os.makedirs(working_dir, exist_ok=True)
+        working_ino_path = os.path.join(working_dir, "main.ino")
         
-        for line in file:
-            # Track if we're in the setup() function for context-aware replacements
-            if line.strip().startswith("void setup()"):
-                in_setup_function = True
-            elif line.strip() == "}" and in_setup_function:
-                in_setup_function = False
-                
-            # Replace register data array
-            if line.startswith('/*MODIFY DATA HERE*/'):
-                line = str1 + str2 + str3 + "\n"
-                print(line)
+        # Copy the bundled file to a writable location
+        shutil.copy2(source_ino_path, working_ino_path)
+        ino_path = working_ino_path
+        print(f"Created working copy: {ino_path}")
+    else:
+        # Running in development - use original file
+        ino_path = source_ino_path
+    
+    # Read the original file
+    with open(ino_path, 'r') as file:
+        lines = file.readlines()
+    
+    # Process lines and build new content
+    new_lines = []
+    skip_gpio_lines = False
+    in_setup_function = False
+    
+    for line in lines:
+        # Track if we're in the setup() function for context-aware replacements
+        if line.strip().startswith("void setup()"):
+            in_setup_function = True
+        elif line.strip() == "}" and in_setup_function:
+            in_setup_function = False
+            
+        # Replace register data array
+        if line.startswith('/*MODIFY DATA HERE*/'):
+            line = str1 + str2 + str3 + "\n"
+            print(line)
 
-            # Replace clock frequency setting
-            if line.startswith('/*MODIFY CLK_FREQ HERE*/'):
-                line = str4 + str5 + str6 + "\n"
-                print(line)
+        # Replace clock frequency setting
+        elif line.startswith('/*MODIFY CLK_FREQ HERE*/'):
+            line = str4 + str5 + str6 + "\n"
+            print(line)
 
-            # Update GPIO pin definitions block
-            if line.startswith('/*MODIFY GPIO PINS HERE*/'):
-                line = str7 + str8 + str9 + str10 + str11 + str12 + str13 + str14 + str15 + "\n"
-                print("Updated GPIO pin definitions")
-                skip_gpio_lines = True
-            elif skip_gpio_lines and line.strip().startswith('const int LED_BUILTIN'):
-                skip_gpio_lines = False
-                continue  # Skip this line as it's included in the GPIO replacement
-            elif skip_gpio_lines and (line.strip().startswith('const int CLOCK_PIN') or 
-                                     line.strip().startswith('const int DATA_PIN') or 
-                                     line.strip().startswith('const int SHIFT_PIN') or 
-                                     line.strip().startswith('const int RESET_PIN')):
-                continue  # Skip existing GPIO pin lines to avoid duplicates
+        # Update GPIO pin definitions block
+        elif line.startswith('/*MODIFY GPIO PINS HERE*/'):
+            line = str7 + str8 + str9 + str10 + str11 + str12 + str13 + str14 + str15 + "\n"
+            print("Updated GPIO pin definitions")
+            skip_gpio_lines = True
+        elif skip_gpio_lines and line.strip().startswith('const int LED_BUILTIN'):
+            skip_gpio_lines = False
+            continue  # Skip this line as it's included in the GPIO replacement
+        elif skip_gpio_lines and (line.strip().startswith('const int CLOCK_PIN') or 
+                                 line.strip().startswith('const int DATA_PIN') or 
+                                 line.strip().startswith('const int SHIFT_PIN') or 
+                                 line.strip().startswith('const int RESET_PIN')):
+            continue  # Skip existing GPIO pin lines to avoid duplicates
 
-            # Switch from reset mode to data transfer mode in setup() function
-            if in_setup_function and line.strip() == "sendResetSequence();":
-                line = "  sendDataSequence();\n"
-                print("Changed to data transfer mode in setup()")
+        # Switch from reset mode to data transfer mode in setup() function
+        elif in_setup_function and line.strip() == "sendResetSequence();":
+            line = "  sendDataSequence();\n"
+            print("Changed to data transfer mode in setup()")
 
-            file.write(line)
+        new_lines.append(line)
+    
+    # Write the modified content back to the file
+    with open(ino_path, 'w') as file:
+        file.writelines(new_lines)
 
 def serial_transfer_data(Data, port_name, timeout=5):
     """
