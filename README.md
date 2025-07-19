@@ -4,21 +4,18 @@ A Python GUI application for configuring and programming ESP32 devices with cust
 
 ## Overview
 
-This project provides a graphical interface for configuring various chip parameters and uploading the configuration to an ESP32 microcontroller. The ESP32 acts as a master device that communicates with a target chip using a custom serial protocol.
+This project provides a graphical interface for configuring 128-bit chip parameters and uploading the configuration to an ESP32 microcontroller. The ESP32 acts as a master device that communicates with a target chip using SPI-based custom serial protocol.
 
 ## Features
 
-- **Intuitive GUI**: PySimpleGUI-based interface with organized parameter sections
-- **Register Configuration**: Configure 128-bit register values across multiple parameter groups
-- **Advanced Settings Panel**: Toggleable panel with clock frequency control, serial port selection, and console output
-- **Adjustable Clock Frequency**: Configure clock frequency from 50kHz to 2MHz (default: 100kHz)
-- **Serial Port Management**: Auto-detection of Silicon Labs CP210x devices with manual port selection
-- **Real-time Console**: Monitor operations, uploads, and errors in real-time with concise logging
-- **Non-blocking Upload**: Threaded upload operations prevent GUI freezing during ESP32 programming
-- **State Management**: Save and load configuration states
-- **ESP32 Programming**: Automatic compilation and upload to ESP32 using Arduino CLI
-- **Custom Serial Protocol**: Implements clock, data, shift, and reset signal control
-- **Enhanced Error Handling**: Comprehensive error detection and user-friendly error messages
+- **PySimpleGUI Interface**: Organized parameter sections with real-time console logging
+- **128-bit Register Configuration**: Configure multiple parameter groups (CSH_EN, PI_EN, delay controls, current controls, filters, etc.)
+- **Dual Transfer Methods**: 
+  - **TRANSFER DATA**: Fast serial communication for real-time updates
+  - **UPLOAD DATA**: Full Arduino firmware upload with new configuration
+- **Advanced Settings Panel**: Clock frequency (50kHz-2MHz), serial port auto-detection, console output
+- **State Management**: Save and load configuration presets
+- **Non-blocking Operations**: Threaded uploads prevent GUI freezing
 
 ## Project Structure
 
@@ -66,131 +63,79 @@ GUI_ESP32/
 python GUI.py
 ```
 
-### Configuration Workflow
+### Operation Modes
 
-1. **Set Parameters**: Use the GUI to configure all required parameters
-2. **Advanced Settings** (Optional): Click the `>` button to access:
-   - Clock frequency adjustment (50kHz - 2MHz)
-   - Serial port selection
-   - Real-time console output
-3. **Save State** (Optional): Save current configuration for future use
-4. **Transfer Data**: Click "TRANSFER DATA" to upload configuration to ESP32 (non-blocking)
-5. **Reset**: Click "RESET" to perform reset-only operation (non-blocking)
+1. **TRANSFER DATA**: Send configuration via serial (fast, for testing)
+2. **UPLOAD DATA**: Program ESP32 firmware with configuration (permanent)
+3. **RESET**: Send reset signal to target chip
 
-### Upload Process
+### Configuration Steps
 
-The upload process is now non-blocking and user-friendly:
+1. Set parameters using GUI controls
+2. Optional: Adjust clock frequency in Advanced Settings (default: 100kHz)
+3. Choose transfer method (TRANSFER for testing, UPLOAD for permanent)
+4. Monitor progress in console output
 
-1. **Immediate Feedback**: Console shows "Uploading to ESP32..." message
-2. **GUI Remains Responsive**: Interface stays interactive during upload
-3. **Progress Indication**: Clear status messages throughout the process
-4. **Completion Notification**: Success or failure messages when upload completes
-5. **Error Handling**: Detailed error messages for troubleshooting
+## Hardware Configuration
 
-### Advanced Settings Panel
+**ESP32 GPIO Pins** (defined in `main.ino`):
+- Clock: GPIO 18 (SPI CLK)
+- Data: GPIO 23 (SPI MOSI)  
+- Shift: GPIO 26
+- Reset: GPIO 33
 
-The advanced settings panel can be toggled by clicking the `>` button and includes:
-
-- **Clock Frequency Control**: Adjustable from 50kHz to 2MHz (default: 100kHz)
-- **Serial Port Selection**: Auto-detects Silicon Labs CP210x devices, manual selection available
-- **Console Output**: Real-time logging of operations, uploads, and error messages with concise formatting
-- **Port Refresh**: Update available serial ports without restarting the application
-- **Console Clear**: Clear console output for better readability
-
-### Non-blocking Operations
-
-The application now features threaded upload operations that prevent GUI freezing:
-
-- **Responsive Interface**: GUI remains interactive during ESP32 programming
-- **Upload Progress**: Clear feedback when upload operations are in progress
-- **Concurrent Protection**: Prevents multiple simultaneous uploads
-- **Error Recovery**: Proper error handling without blocking the interface
-
-### GPIO Pin Configuration
-
-Current ESP32 pin assignments (as defined in [`main.ino`](main/main.ino)):
-- **Clock Pin**: GPIO 13
-- **Data Pin**: GPIO 14
-- **Shift Pin**: GPIO 12
-- **Reset Pin**: GPIO 27
-
-### Clock Frequency
-
-Default clock frequency is now set to 100 kHz and can be adjusted through the Advanced Settings panel. Available frequencies:
-- 50 kHz
-- 100 kHz (default)
-- 200 kHz
-- 500 kHz
-- 1 MHz
-- 2 MHz
-
-Custom frequencies can be entered directly in the frequency field.
+**Clock Frequencies**: 50kHz - 2MHz (default: 100kHz)
 
 ## Serial Protocol
 
-The ESP32 implements a custom serial protocol with the following sequence:
+Custom SPI-based protocol for 128-bit data transmission:
 
-1. **Reset Phase**: RESET low for 2 clock cycles (preparation)
-2. **Start Phase**: SHIFT high for 1 clock cycle (start transmission signal)
-3. **Data Phase**: RESET and SHIFT both high, transmit 128 bits MSB first
-4. **End Phase**: SHIFT low (end of transmission), 2 additional clock cycles to save shift status
-5. **Idle Phase**: All signals return to idle state
+1. **Reset Phase**: RESET low for initialization
+2. **Data Transmission**: SHIFT high during 128-bit transfer (MSB first)
+3. **Completion**: SHIFT low, additional cycles for status save
 
-**Key Points:**
-- SHIFT remains HIGH during the entire 128-bit data transmission
-- Data is transmitted MSB first (bit 127 to bit 0)
-- Data changes on clock falling edge, sampled on rising edge
-- SHIFT signal indicates when valid data transmission is occurring
+Key characteristics:
+- MSB-first transmission (bit 127 → bit 0)
+- SHIFT signal indicates active data transmission
+- SPI hardware acceleration for reliable timing
 
-## Files Generated
+## Project Structure
 
-- **[`WRITTEN_TO_CHIP.txt`](WRITTEN_TO_CHIP.txt)**: Log of the last configuration uploaded
-- **State Files**: Saved configurations in `states/` directory
+```
+GUI_ESP32/
+├── GUI.py                    # Main entry point
+├── main/main.ino            # ESP32 firmware
+├── codes/
+│   ├── complete_gui.py      # GUI event handling
+│   ├── gui_parameters.py    # Layout definitions  
+│   ├── register_assignment.py # 128-bit register mapping
+│   ├── Analog2Bits.py       # GUI → integer conversion
+│   ├── register2arduino.py  # Serial communication
+│   └── upload2Arduino.py    # ESP32 programming
+├── states/                  # Configuration presets
+└── WRITTEN_TO_CHIP.txt     # Last configuration log
+```
 
-## Dependencies
+## Architecture
 
-Key Python packages (see [`requirements.txt`](requirements.txt)):
-- PySimpleGUI: GUI framework
-- pyserial: Serial communication
-- in_place: File modification utilities
-- Various jaraco packages for Windows compatibility
+- **GUI Layer**: PySimpleGUI interface with parameter controls
+- **Conversion Layer**: GUI values → 128-bit register mapping  
+- **Communication Layer**: Serial protocol + Arduino CLI integration
+- **Hardware Layer**: ESP32 SPI-based transmission to target chip
 
-## Development
+## Key Dependencies
 
-The project uses a modular architecture:
-
-- **[`complete_gui.py`](codes/complete_gui.py)**: Main GUI event loop and logic
-- **[`gui_parameters.py`](codes/gui_parameters.py)**: GUI layout definitions
-- **[`register_assignment.py`](codes/register_assignment.py)**: Maps GUI values to 128-bit register
-- **[`register2arduino.py`](codes/register2arduino.py)**: Generates Arduino code
-- **[`upload2Arduino.py`](codes/upload2Arduino.py)**: Handles ESP32 programming
-
-## Hardware Requirements
-
-- ESP32 development board
-- USB cable for programming
-- Target chip with compatible serial interface
-- Proper GPIO connections between ESP32 and target
+- `PySimpleGUI`: GUI framework
+- `pyserial`: Serial communication
+- `arduino-cli`: ESP32 programming
+- `in_place`: File modification
 
 ## Troubleshooting
 
-1. **Upload Issues**: Check ESP32 connection and ensure Arduino CLI is properly installed
-2. **Port Detection**: Use the "Refresh" button in Advanced Settings to update available ports
-3. **Clock Frequency**: Ensure the selected frequency is compatible with your target hardware
-4. **Console Errors**: Check the console output in Advanced Settings for detailed error messages
-5. **Compilation Errors**: Verify ESP32 board support is installed in Arduino CLI
-6. **GUI Freezing**: If GUI becomes unresponsive, restart the application (upload operations are now non-blocking)
-7. **Multiple Uploads**: If you see "Upload already in progress", wait for current upload to complete
-8. **CP210x Detection**: Ensure Silicon Labs CP210x drivers are installed for automatic port detection
-
-## Recent Improvements
-
-- **Enhanced Logging**: Concise, user-friendly console messages
-- **Threaded Uploads**: Non-blocking upload operations prevent GUI freezing
-- **Better Error Handling**: Improved error detection and user feedback
-- **Port Detection**: Enhanced Silicon Labs CP210x device detection
-- **UI Polish**: Cleaner interface with better visual feedback
-- **Concurrent Upload Protection**: Prevents multiple simultaneous uploads
+- **Port Detection**: Use "Refresh" in Advanced Settings
+- **Upload Errors**: Check ESP32 connection and Arduino CLI installation  
+- **Serial Issues**: Verify ESP32 is programmed and connected
+- **Clock Compatibility**: Adjust frequency for target hardware requirements
 
 ## License
 
